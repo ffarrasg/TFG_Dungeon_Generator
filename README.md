@@ -38,13 +38,11 @@ El prototip inclou:
 
 1. Clonar el repositori:
 
-<bash>
 git clone https://github.com/EL_TEU_USUARI/TFG_Dungeon_Generator.git
 cd TFG_Dungeon_Generator
 
 2. Crear i activar entorn virtual:
 
-<bash>
 python -m venv .venv
 .venv\Scripts\activate
 
@@ -54,7 +52,6 @@ pip install -r requirements.txt
 
 4. Executar projecte:
 
-<bash>
 python main.py
 
 ## Controls
