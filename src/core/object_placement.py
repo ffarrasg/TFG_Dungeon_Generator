@@ -23,10 +23,7 @@ def _is_inside(grid, x, y):
 
 def _walkable_neighbors(grid, x, y):
     """
-    Comptador de veïns transitables en les 4 direccions principals.
-
-    Aquesta funció s'utilitza per detectar si una cel·la forma part d'una
-    zona prou oberta o si, al contrari, és un passadís estret.
+    Compta quants veïns transitables té una cel·la.
     """
     walkable_tiles = set(WALKABLE_TERRAINS) | {PLAYER, EXIT, KEY}
     directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
@@ -41,21 +38,14 @@ def _walkable_neighbors(grid, x, y):
 
 def _manhattan_distance(a, b):
     """
-    Calcula la distància Manhattan entre dos punts del mapa.
-    Aquesta distància es fa servir per evitar que elements importants
-    apareguin massa a prop entre ells.
+    Calcula la distància Manhattan entre dos punts.
     """
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
 def _valid_open_area_cell(grid, x, y, min_neighbors=3):
     """
-    Comprova si una cel·la és adequada per col·locar-hi elements del joc.
-
-    Una cel·la és vàlida si:
-    - està dins del mapa
-    - és transitable
-    - té prou veïns transitables al voltant
+    Comprova si una cel·la és adequada per col·locar-hi elements.
     """
     if not _is_inside(grid, x, y):
         return False
@@ -68,12 +58,7 @@ def _valid_open_area_cell(grid, x, y, min_neighbors=3):
 
 def _get_valid_positions(grid, player_pos=None, min_distance=0, min_neighbors=3):
     """
-    Retorna totes les posicions vàlides per col·locar un element del joc.
-
-    Opcionalment es pot indicar:
-    - una posició de referència (normalment el jugador)
-    - una distància mínima respecte aquesta posició
-    - un nombre mínim de veïns transitables
+    Retorna posicions vàlides per col·locar elements.
     """
     positions = []
 
@@ -92,10 +77,8 @@ def _get_valid_positions(grid, player_pos=None, min_distance=0, min_neighbors=3)
 
 def place_player(grid):
     """
-    Col·loca el jugador en una posició inicial adequada.
-
-    Es prioritzen zones obertes del mapa per evitar que el jugador aparegui
-    en passadissos massa estrets o en posicions poc favorables.
+    Col·loca el jugador en una zona adequada.
+    Retorna la posició i el terreny original de sota.
     """
     valid_positions = _get_valid_positions(
         grid,
@@ -104,7 +87,6 @@ def place_player(grid):
         min_neighbors=3
     )
 
-    # Si no hi ha prou posicions bones, es relaxa la restricció
     if not valid_positions:
         valid_positions = _get_valid_positions(
             grid,
@@ -113,16 +95,12 @@ def place_player(grid):
             min_neighbors=2
         )
 
-    # Últim recurs: qualsevol cel·la transitable
     if not valid_positions:
         valid_positions = _get_positions_by_walkable(grid)
 
     if valid_positions:
         x, y = random.choice(valid_positions)
-
-        # Es guarda quin terreny hi havia sota del jugador
         original_tile = grid[y][x]
-
         grid[y][x] = PLAYER
         return (x, y), original_tile
 
@@ -131,7 +109,8 @@ def place_player(grid):
 
 def place_exit(grid, player_pos=None, min_distance=8):
     """
-    Col·loca la sortida del nivell en una zona oberta i prou allunyada del jugador.
+    Col·loca la sortida en una zona oberta i allunyada del jugador.
+    Retorna la posició i el terreny original de sota.
     """
     valid_positions = _get_valid_positions(
         grid,
@@ -140,7 +119,6 @@ def place_exit(grid, player_pos=None, min_distance=8):
         min_neighbors=3
     )
 
-    # Si no hi ha posicions amb prou espai, es relaxa la restricció
     if not valid_positions:
         valid_positions = _get_valid_positions(
             grid,
@@ -149,31 +127,28 @@ def place_exit(grid, player_pos=None, min_distance=8):
             min_neighbors=2
         )
 
-    # Si encara no n'hi ha, es manté només la distància mínima
     if not valid_positions:
         valid_positions = []
         for x, y in _get_positions_by_walkable(grid):
             if player_pos is None or _manhattan_distance((x, y), player_pos) >= min_distance:
                 valid_positions.append((x, y))
 
-    # Últim recurs: qualsevol cel·la transitable
     if not valid_positions:
         valid_positions = _get_positions_by_walkable(grid)
 
     if valid_positions:
         x, y = random.choice(valid_positions)
+        original_tile = grid[y][x]
         grid[y][x] = EXIT
-        return (x, y)
+        return (x, y), original_tile
 
-    return None
+    return None, DIRT
 
 
 def place_key(grid, player_pos=None, min_distance=5):
     """
-    Col·loca la clau en una zona adequada del mapa.
-
-    Igual que amb la sortida, es prioritzen zones obertes i
-    es manté una certa distància respecte al jugador.
+    Col·loca la clau en una zona adequada.
+    Retorna la posició i el terreny original de sota.
     """
     valid_positions = _get_valid_positions(
         grid,
@@ -182,7 +157,6 @@ def place_key(grid, player_pos=None, min_distance=5):
         min_neighbors=3
     )
 
-    # Si no hi ha prou posicions, es relaxa el nombre mínim de veïns
     if not valid_positions:
         valid_positions = _get_valid_positions(
             grid,
@@ -191,44 +165,41 @@ def place_key(grid, player_pos=None, min_distance=5):
             min_neighbors=2
         )
 
-    # Si encara no n'hi ha, es manté només la distància mínima
     if not valid_positions:
         valid_positions = []
         for x, y in _get_positions_by_walkable(grid):
             if player_pos is None or _manhattan_distance((x, y), player_pos) >= min_distance:
                 valid_positions.append((x, y))
 
-    # Últim recurs: qualsevol cel·la transitable
     if not valid_positions:
         valid_positions = _get_positions_by_walkable(grid)
 
     if valid_positions:
         x, y = random.choice(valid_positions)
+        original_tile = grid[y][x]
         grid[y][x] = KEY
-        return (x, y)
+        return (x, y), original_tile
 
-    return None
+    return None, DIRT
 
 
-def clear_enemies(grid):
+def clear_enemies(grid, enemies=None):
     """
-    Elimina tots els enemics del mapa.
-
-    Quan es recalcula la col·locació dels enemics, les seves caselles
-    es restauren com a terra base.
+    Elimina els enemics i restaura el terreny original de sota.
     """
-    for y, row in enumerate(grid):
-        for x, cell in enumerate(row):
-            if cell == ENEMY:
-                grid[y][x] = DIRT
+    if enemies is None:
+        enemies = []
+
+    for enemy in enemies:
+        x = enemy["x"]
+        y = enemy["y"]
+        grid[y][x] = enemy["under_tile"]
 
 
 def place_enemies(grid, count=3, forbidden_positions=None):
     """
-    Col·loca enemics al mapa evitant posicions crítiques.
-
-    Les posicions prohibides solen correspondre al camí principal entre
-    jugador, clau i sortida, per evitar que els enemics bloquegin el nivell.
+    Col·loca enemics evitant posicions crítiques.
+    Retorna una llista amb la informació de cada enemic.
     """
     if forbidden_positions is None:
         forbidden_positions = set()
@@ -237,15 +208,12 @@ def place_enemies(grid, count=3, forbidden_positions=None):
 
     valid_positions = []
     for x, y in floors:
-        # No es poden posar enemics en posicions prohibides
         if (x, y) in forbidden_positions:
             continue
 
-        # Es prioritzen zones obertes per evitar bloquejar passadissos
         if _walkable_neighbors(grid, x, y) >= 3:
             valid_positions.append((x, y))
 
-    # Si no hi ha prou posicions bones, es relaxa la restricció
     if len(valid_positions) < count:
         valid_positions = [pos for pos in floors if pos not in forbidden_positions]
 
@@ -253,7 +221,15 @@ def place_enemies(grid, count=3, forbidden_positions=None):
 
     enemies = []
     for x, y in valid_positions[:count]:
+        original_tile = grid[y][x]
+
+        enemy = {
+            "x": x,
+            "y": y,
+            "under_tile": original_tile
+        }
+
         grid[y][x] = ENEMY
-        enemies.append((x, y))
+        enemies.append(enemy)
 
     return enemies

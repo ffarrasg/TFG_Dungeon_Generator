@@ -1,34 +1,31 @@
 import pygame
 
-# Importació de constants de configuració del projecte
 from config import (
     MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT,
-    FPS, WALL, WATER, DIRT, PLAYER, EXIT, KEY, ENEMY,
+    FPS, WALL, WATER, PLAYER, EXIT, KEY, ENEMY,
     WALKABLE_TERRAINS, ALGORITHMS, DEFAULT_ALGORITHM
 )
 
-# Importació dels diferents algoritmes de generació de mapes
 from src.algorithms.random_walk_generator import RandomWalkGenerator
 from src.algorithms.bsp_generator import BSPGenerator
 from src.algorithms.cellular_generator import CellularGenerator
 
-# Importació de funcions auxiliars
 from src.core.metrics import measure_generation_time, walkable_percentage
 from src.core.object_placement import (
-    place_player, place_exit, place_key, place_enemies, clear_enemies
+    place_player, place_exit, place_key
 )
 from src.core.terrain_generator import apply_base_terrain, apply_water_patches
-from src.core.map_utils import find_tile, path_exists, find_path
+from src.core.map_utils import (
+    find_tile, path_exists, find_path,
+    PASSABLE_BEFORE_KEY, PASSABLE_AFTER_KEY
+)
+from src.core.enemy_manager import place_level_enemies, move_enemies
 
-# Funcions de renderitzat
-from src.visual.renderer import draw_grid, draw_hud, draw_game_over
+from src.visual.renderer import draw_grid, draw_hud, draw_game_over, draw_start_screen
 
 
 def find_player(grid):
-    """
-    Cerca la posició actual del jugador dins del mapa.
-    Retorna una tupla (x, y) o None si no es troba.
-    """
+    """Retorna la posició del jugador."""
     for y, row in enumerate(grid):
         for x, cell in enumerate(row):
             if cell == PLAYER:
@@ -37,10 +34,7 @@ def find_player(grid):
 
 
 def build_generator(algorithm_name):
-    """
-    Crea una instància de l'algoritme de generació seleccionat.
-    Permet canviar d'algoritme dinàmicament durant l'execució.
-    """
+    """Construeix l'algoritme seleccionat."""
     if algorithm_name == "random_walk":
         return RandomWalkGenerator(MAP_WIDTH, MAP_HEIGHT)
     elif algorithm_name == "bsp":
@@ -54,9 +48,9 @@ def build_generator(algorithm_name):
 def is_level_solvable(grid):
     """
     Comprova si el nivell és resoluble.
-    Es considera resoluble si:
-    - existeix camí del jugador a la clau
-    - existeix camí de la clau a la sortida
+
+    Abans de tenir la clau, la porta no es considera transitable.
+    Després de tenir la clau, la porta sí que es pot utilitzar.
     """
     player_pos = find_tile(grid, PLAYER)
     key_pos = find_tile(grid, KEY)
@@ -65,237 +59,253 @@ def is_level_solvable(grid):
     if player_pos is None or key_pos is None or exit_pos is None:
         return False
 
-    if not path_exists(grid, player_pos, key_pos):
+    # Primer s'ha de poder arribar a la clau sense travessar la porta
+    if not path_exists(grid, player_pos, key_pos, PASSABLE_BEFORE_KEY):
         return False
 
-    if not path_exists(grid, key_pos, exit_pos):
+    # Després de tenir la clau, s'ha de poder arribar a la sortida
+    if not path_exists(grid, key_pos, exit_pos, PASSABLE_AFTER_KEY):
         return False
 
     return True
 
 
-def generate_base_map(level, algorithm_name, max_attempts=50):
-    """
-    Genera un mapa base sense enemics.
-    Es repeteix el procés fins que el mapa és jugable.
-    """
-    for attempt in range(max_attempts):
+def generate_base_map(level, algorithm_name):
+    """Genera el mapa base."""
+    while True:
         generator = build_generator(algorithm_name)
+        grid, _ = measure_generation_time(generator)
 
-        # Generació del mapa amb l'algoritme escollit
-        grid, generation_time = measure_generation_time(generator)
-
-        # Aplicació de textures (herba, roca, terra)
         apply_base_terrain(grid)
+        apply_water_patches(grid)
 
-        # Afegir zones d'aigua com a obstacles
-        apply_water_patches(grid, patch_count=2)
+        entity_under_tiles = {}
 
-        # Col·locació d'elements principals
         player_pos, player_under_tile = place_player(grid)
-        place_exit(grid, player_pos=player_pos, min_distance=8)
-        place_key(grid, player_pos=player_pos, min_distance=5)
+        entity_under_tiles[player_pos] = player_under_tile
 
-        # Validació del mapa
+        exit_pos, exit_under_tile = place_exit(grid, player_pos)
+        entity_under_tiles[exit_pos] = exit_under_tile
+
+        key_pos, key_under_tile = place_key(grid, player_pos)
+        entity_under_tiles[key_pos] = key_under_tile
+
         if is_level_solvable(grid):
-            print(f"Level {level}")
-            print(f"Algorithm: {algorithm_name}")
-            print(f"Temps de generació: {generation_time:.6f} s")
-            print(f"Percentatge transitable: {walkable_percentage(grid):.2%}")
-            print(f"Mapa base vàlid trobat a l'intent {attempt + 1}")
-            return grid, player_under_tile
-
-    # Si no es troba cap mapa vàlid
-    raise RuntimeError("No s'ha pogut generar un mapa base resoluble.")
+            return grid, player_under_tile, entity_under_tiles
 
 
-def place_valid_enemies(grid, level, max_attempts=40):
+def place_valid_enemies(grid, level, entity_under_tiles):
     """
-    Col·loca enemics evitant bloquejar el camí principal.
-    Si bloquegen el mapa, es recol·loquen sense regenerar tot el nivell.
+    Calcula el camí crític del nivell i col·loca els enemics evitant-lo.
+
+    El camí crític és:
+    - jugador -> clau
+    - clau -> sortida
+
+    Això evita que els enemics apareguin o es moguin sobre el recorregut
+    necessari per completar el nivell.
     """
     player_pos = find_tile(grid, PLAYER)
     key_pos = find_tile(grid, KEY)
     exit_pos = find_tile(grid, EXIT)
 
-    # Camins crítics del nivell
-    path1 = find_path(grid, player_pos, key_pos) or []
-    path2 = find_path(grid, key_pos, exit_pos) or []
+    path1 = find_path(grid, player_pos, key_pos, PASSABLE_BEFORE_KEY) or []
+    path2 = find_path(grid, key_pos, exit_pos, PASSABLE_AFTER_KEY) or []
 
     critical_path = set(path1 + path2)
 
-    # Nombre d'enemics augmenta amb el nivell
-    enemy_count = min(3 + level, 8)
+    enemies = place_level_enemies(
+        grid,
+        level,
+        entity_under_tiles,
+        forbidden_positions=critical_path
+    )
 
-    for _ in range(max_attempts):
-        clear_enemies(grid)
-        place_enemies(grid, count=enemy_count, forbidden_positions=critical_path)
-
-        if is_level_solvable(grid):
-            return True
-
-    # Si no es pot garantir la jugabilitat, es treuen els enemics
-    clear_enemies(grid)
-    return False
+    return enemies
 
 
-def generate_new_map(level, algorithm_name):
+def generate_new_map(level, algorithm):
     """
-    Genera un mapa complet:
-    - mapa base vàlid
-    - col·locació d'enemics
+    Genera mapa complet amb enemics.
     """
-    grid, player_under_tile = generate_base_map(level, algorithm_name)
-    place_valid_enemies(grid, level)
-    return grid, player_under_tile
+    grid, player_under_tile, entity_under_tiles = generate_base_map(level, algorithm)
+
+    enemies = place_valid_enemies(
+        grid,
+        level,
+        entity_under_tiles
+    )
+
+    return grid, player_under_tile, entity_under_tiles, enemies
 
 
-def move_player(grid, dx, dy, has_key, player_under_tile):
-    """
-    Gestiona el moviment del jugador i les interaccions amb el mapa.
-    """
-    pos = find_player(grid)
-    if not pos:
+def move_player(grid, dx, dy, has_key, player_under_tile, entity_under_tiles):
+    """Moviment del jugador."""
+    x, y = find_player(grid)
+    nx, ny = x + dx, y + dy
+
+    if not (0 <= nx < len(grid[0]) and 0 <= ny < len(grid)):
         return has_key, False, False, player_under_tile
 
-    x, y = pos
-    new_x = x + dx
-    new_y = y + dy
+    target = grid[ny][nx]
 
-    # Evitar sortir del mapa
-    if new_x < 0 or new_x >= len(grid[0]) or new_y < 0 or new_y >= len(grid):
+    # Murs o aigua
+    if target in (WALL, WATER):
         return has_key, False, False, player_under_tile
 
-    target_tile = grid[new_y][new_x]
-
-    # Obstacles no transitables
-    if target_tile == WALL or target_tile == WATER:
-        return has_key, False, False, player_under_tile
-
-    # Enemic → final de la partida
-    if target_tile == ENEMY:
+    # Enemic → GAME OVER immediat
+    if target == ENEMY:
         return has_key, True, False, player_under_tile
 
     # Sortida
-    if target_tile == EXIT:
+    if target == EXIT:
         if has_key:
             return has_key, False, True, player_under_tile
         return has_key, False, False, player_under_tile
 
     # Clau
-    if target_tile == KEY:
+    if target == KEY:
         has_key = True
-        grid[y][x] = player_under_tile
-        player_under_tile = DIRT
-        grid[new_y][new_x] = PLAYER
-        return has_key, False, False, player_under_tile
 
-    # Moviment normal
-    if target_tile in WALKABLE_TERRAINS:
-        grid[y][x] = player_under_tile
-        player_under_tile = target_tile
-        grid[new_y][new_x] = PLAYER
+    # Moure jugador
+    old_pos = (x, y)
+    new_pos = (nx, ny)
+
+    grid[y][x] = player_under_tile
+    entity_under_tiles.pop(old_pos, None)
+
+    player_under_tile = entity_under_tiles.get(new_pos, target)
+    entity_under_tiles.pop(new_pos, None)
+
+    grid[ny][nx] = PLAYER
+    entity_under_tiles[new_pos] = player_under_tile
 
     return has_key, False, False, player_under_tile
 
 
-def next_algorithm(current_algorithm):
-    """
-    Retorna el següent algoritme disponible (cicle).
-    """
-    current_index = ALGORITHMS.index(current_algorithm)
-    next_index = (current_index + 1) % len(ALGORITHMS)
-    return ALGORITHMS[next_index]
+def next_algorithm(current):
+    """Canvia algoritme."""
+    i = ALGORITHMS.index(current)
+    return ALGORITHMS[(i + 1) % len(ALGORITHMS)]
 
 
-def reset_game(current_algorithm):
-    """
-    Reinicia el joc:
-    - nivell 1
-    - sense clau
-    - nou mapa
-    """
+def reset_game(algorithm):
+    """Reinicia partida."""
     level = 1
     has_key = False
     game_over = False
-    grid, player_under_tile = generate_new_map(level, current_algorithm)
-    return grid, level, has_key, game_over, player_under_tile
+
+    grid, player_under_tile, entity_under_tiles, enemies = generate_new_map(level, algorithm)
+
+    return grid, level, has_key, game_over, player_under_tile, entity_under_tiles, enemies
 
 
 def main():
-    """
-    Funció principal del programa.
-    Gestiona el bucle del joc i la interacció amb l'usuari.
-    """
     pygame.init()
 
-    # Creació de la finestra
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Dungeon Generator Prototype")
+    pygame.display.set_caption("Dungeon Generator")
 
     clock = pygame.time.Clock()
 
-    # Fonts per al HUD i missatges
     font = pygame.font.SysFont(None, 30)
+    title_font = pygame.font.SysFont(None, 70)
     game_over_font = pygame.font.SysFont(None, 64)
 
     current_algorithm = DEFAULT_ALGORITHM
+    game_state = "start"
 
-    # Inicialització del joc
-    grid, level, has_key, game_over, player_under_tile = reset_game(current_algorithm)
+    start_background = build_generator(current_algorithm).generate()
+
+    grid, level, has_key, game_over, player_under_tile, entity_under_tiles, enemies = reset_game(
+        current_algorithm
+    )
 
     running = True
     while running:
+
         for event in pygame.event.get():
+
             if event.type == pygame.QUIT:
                 running = False
 
             if event.type == pygame.KEYDOWN:
 
-                # Reiniciar partida
-                if event.key == pygame.K_r:
-                    grid, level, has_key, game_over, player_under_tile = reset_game(current_algorithm)
+                # PANTALLA INICIAL
+                if game_state == "start":
+                    if event.key == pygame.K_RETURN:
+                        game_state = "playing"
 
-                # Canviar algoritme
-                elif event.key == pygame.K_a:
-                    current_algorithm = next_algorithm(current_algorithm)
-                    grid, level, has_key, game_over, player_under_tile = reset_game(current_algorithm)
+                elif game_state == "playing":
 
-                # Moviment del jugador
-                elif not game_over:
-                    next_level = False
-
-                    if event.key == pygame.K_UP:
-                        has_key, game_over, next_level, player_under_tile = move_player(
-                            grid, 0, -1, has_key, player_under_tile
-                        )
-                    elif event.key == pygame.K_DOWN:
-                        has_key, game_over, next_level, player_under_tile = move_player(
-                            grid, 0, 1, has_key, player_under_tile
-                        )
-                    elif event.key == pygame.K_LEFT:
-                        has_key, game_over, next_level, player_under_tile = move_player(
-                            grid, -1, 0, has_key, player_under_tile
-                        )
-                    elif event.key == pygame.K_RIGHT:
-                        has_key, game_over, next_level, player_under_tile = move_player(
-                            grid, 1, 0, has_key, player_under_tile
+                    if event.key == pygame.K_r:
+                        grid, level, has_key, game_over, player_under_tile, entity_under_tiles, enemies = reset_game(
+                            current_algorithm
                         )
 
-                    # Avançar de nivell
-                    if next_level:
-                        level += 1
-                        has_key = False
-                        grid, player_under_tile = generate_new_map(level, current_algorithm)
+                    elif event.key == pygame.K_a:
+                        current_algorithm = next_algorithm(current_algorithm)
+                        grid, level, has_key, game_over, player_under_tile, entity_under_tiles, enemies = reset_game(
+                            current_algorithm
+                        )
 
-        # Renderitzat
-        screen.fill((0, 0, 0))
-        draw_grid(screen, grid)
-        draw_hud(screen, font, has_key, level, current_algorithm)
+                    elif not game_over:
 
-        # Mostrar pantalla de Game Over
-        if game_over:
-            draw_game_over(screen, game_over_font)
+                        next_level = False
+                        moved = False  
+
+                        if event.key == pygame.K_UP:
+                            has_key, game_over, next_level, player_under_tile = move_player(
+                                grid, 0, -1, has_key, player_under_tile, entity_under_tiles
+                            )
+                            moved = True
+
+                        elif event.key == pygame.K_DOWN:
+                            has_key, game_over, next_level, player_under_tile = move_player(
+                                grid, 0, 1, has_key, player_under_tile, entity_under_tiles
+                            )
+                            moved = True
+
+                        elif event.key == pygame.K_LEFT:
+                            has_key, game_over, next_level, player_under_tile = move_player(
+                                grid, -1, 0, has_key, player_under_tile, entity_under_tiles
+                            )
+                            moved = True
+
+                        elif event.key == pygame.K_RIGHT:
+                            has_key, game_over, next_level, player_under_tile = move_player(
+                                grid, 1, 0, has_key, player_under_tile, entity_under_tiles
+                            )
+                            moved = True
+
+                        # 🔥 CANVI CLAU
+                        if next_level:
+                            level += 1
+                            has_key = False
+
+                            grid, player_under_tile, entity_under_tiles, enemies = generate_new_map(
+                                level,
+                                current_algorithm
+                            )
+
+                        elif moved and not game_over:
+                            # Els enemics només es mouen si el jugador no ha mort
+                            game_over = move_enemies(
+                                grid,
+                                enemies,
+                                entity_under_tiles
+                            )
+
+        # RENDER
+        if game_state == "start":
+            draw_start_screen(screen, title_font, font, start_background)
+        else:
+            screen.fill((0, 0, 0))
+            draw_grid(screen, grid, entity_under_tiles)
+            draw_hud(screen, font, has_key, level, current_algorithm)
+
+            if game_over:
+                draw_game_over(screen, game_over_font)
 
         pygame.display.flip()
         clock.tick(FPS)

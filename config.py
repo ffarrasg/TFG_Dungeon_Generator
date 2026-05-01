@@ -7,7 +7,8 @@ TILE_SIZE = 24
 
 # Dimensions de la finestra del joc (en píxels)
 SCREEN_WIDTH = MAP_WIDTH * TILE_SIZE
-SCREEN_HEIGHT = MAP_HEIGHT * TILE_SIZE
+HUD_HEIGHT = 40
+SCREEN_HEIGHT = MAP_HEIGHT * TILE_SIZE + HUD_HEIGHT
 
 # Frames per segon (velocitat d'actualització del joc)
 FPS = 30
