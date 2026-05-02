@@ -23,6 +23,7 @@ from src.core.enemy_manager import place_level_enemies, move_enemies
 
 from src.visual.renderer import draw_grid, draw_hud, draw_game_over, draw_start_screen
 
+from src.core.statistics import save_map_statistics
 
 def find_player(grid):
     """Retorna la posició del jugador."""
@@ -71,10 +72,19 @@ def is_level_solvable(grid):
 
 
 def generate_base_map(level, algorithm_name):
-    """Genera el mapa base."""
+    """
+    Genera el mapa base.
+
+    Es repeteix fins que el mapa sigui resoluble.
+    També desa estadístiques del mapa generat.
+    """
+    attempt = 0
+
     while True:
+        attempt += 1
+
         generator = build_generator(algorithm_name)
-        grid, _ = measure_generation_time(generator)
+        grid, generation_time = measure_generation_time(generator)
 
         apply_base_terrain(grid)
         apply_water_patches(grid)
@@ -91,7 +101,14 @@ def generate_base_map(level, algorithm_name):
         entity_under_tiles[key_pos] = key_under_tile
 
         if is_level_solvable(grid):
-            return grid, player_under_tile, entity_under_tiles
+
+            print(f"Level {level}")
+            print(f"Algorithm: {algorithm_name}")
+            print(f"Temps de generació: {generation_time:.6f} s")
+            print(f"Percentatge transitable: {walkable_percentage(grid):.2%}")
+            print(f"Mapa vàlid trobat a l'intent {attempt}")
+
+            return grid, player_under_tile, entity_under_tiles, generation_time, attempt
 
 
 def place_valid_enemies(grid, level, entity_under_tiles):
@@ -126,14 +143,25 @@ def place_valid_enemies(grid, level, entity_under_tiles):
 
 def generate_new_map(level, algorithm):
     """
-    Genera mapa complet amb enemics.
+    Genera mapa complet amb enemics i desa les mètriques finals.
     """
-    grid, player_under_tile, entity_under_tiles = generate_base_map(level, algorithm)
+    grid, player_under_tile, entity_under_tiles, generation_time, attempt = generate_base_map(
+        level,
+        algorithm
+    )
 
     enemies = place_valid_enemies(
         grid,
         level,
         entity_under_tiles
+    )
+
+    save_map_statistics(
+        grid,
+        algorithm,
+        level,
+        generation_time,
+        attempt
     )
 
     return grid, player_under_tile, entity_under_tiles, enemies
