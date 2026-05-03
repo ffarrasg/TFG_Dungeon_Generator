@@ -1,10 +1,5 @@
 from collections import deque
-from config import GRASS, ROCK, DIRT, PLAYER, EXIT, KEY
-
-
-PASSABLE_FOR_PATH = {GRASS, ROCK, DIRT, PLAYER, EXIT, KEY}
-PASSABLE_BEFORE_KEY = {GRASS, ROCK, DIRT, PLAYER, KEY}
-PASSABLE_AFTER_KEY = {GRASS, ROCK, DIRT, PLAYER, EXIT, KEY}
+from config import PASSABLE_FOR_PATH
 
 
 def is_inside(grid, x, y):

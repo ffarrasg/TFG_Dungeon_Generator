@@ -50,3 +50,13 @@ WALKABLE_TERRAINS = {GRASS, ROCK, DIRT}
 # Totes les cel·les considerades transitables (incloent objectes i jugador)
 WALKABLE_TILES = {GRASS, ROCK, DIRT, PLAYER, EXIT, KEY, ENEMY}
 
+# Totes les cel·les considerades transitables per afegir objectes (jugador, sortida, clau)
+WALKABLE_OBJECT_PLACEMENT = WALKABLE_TERRAINS | {PLAYER, EXIT, KEY}
+
+# Tiles transitables per validació de camins
+PASSABLE_BEFORE_KEY = {GRASS, ROCK, DIRT, PLAYER, KEY}
+PASSABLE_AFTER_KEY = {GRASS, ROCK, DIRT, PLAYER, EXIT, KEY}
+PASSABLE_FOR_PATH = {GRASS, ROCK, DIRT, PLAYER, EXIT, KEY}
+
+BLOCKING_TILES = {WALL, WATER}
+DANGER_TILES = {ENEMY}

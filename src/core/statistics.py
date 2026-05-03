@@ -2,14 +2,12 @@ import csv
 import os
 from datetime import datetime
 
-from config import PLAYER, KEY, EXIT, ENEMY, WATER, WALL
-from src.core.metrics import walkable_percentage
-from src.core.map_utils import (
-    find_tile,
-    find_path,
-    PASSABLE_BEFORE_KEY,
-    PASSABLE_AFTER_KEY
+from config import (
+    PLAYER, KEY, EXIT, ENEMY, WATER, WALL,
+    PASSABLE_BEFORE_KEY, PASSABLE_AFTER_KEY
 )
+from src.core.map_utils import find_tile, find_path
+from src.core.metrics import walkable_percentage
 
 
 METRICS_FILE = "data/metrics.csv"

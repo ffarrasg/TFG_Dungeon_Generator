@@ -2,8 +2,9 @@ import pygame
 
 from config import (
     MAP_WIDTH, MAP_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT,
-    FPS, WALL, WATER, PLAYER, EXIT, KEY, ENEMY,
-    WALKABLE_TERRAINS, ALGORITHMS, DEFAULT_ALGORITHM
+    FPS, PLAYER, EXIT, KEY, PASSABLE_BEFORE_KEY, PASSABLE_AFTER_KEY,
+    WALKABLE_TERRAINS, BLOCKING_TILES, DANGER_TILES,
+    ALGORITHMS, DEFAULT_ALGORITHM
 )
 
 from src.algorithms.random_walk_generator import RandomWalkGenerator
@@ -15,10 +16,7 @@ from src.core.object_placement import (
     place_player, place_exit, place_key
 )
 from src.core.terrain_generator import apply_base_terrain, apply_water_patches
-from src.core.map_utils import (
-    find_tile, path_exists, find_path,
-    PASSABLE_BEFORE_KEY, PASSABLE_AFTER_KEY
-)
+from src.core.map_utils import find_tile, path_exists, find_path
 from src.core.enemy_manager import place_level_enemies, move_enemies
 
 from src.visual.renderer import draw_grid, draw_hud, draw_game_over, draw_start_screen
@@ -177,12 +175,12 @@ def move_player(grid, dx, dy, has_key, player_under_tile, entity_under_tiles):
 
     target = grid[ny][nx]
 
-    # Murs o aigua
-    if target in (WALL, WATER):
+    # Tiles bloquejants, com murs o aigua
+    if target in BLOCKING_TILES:
         return has_key, False, False, player_under_tile
 
-    # Enemic → GAME OVER immediat
-    if target == ENEMY:
+    # Tiles perillosos, com els enemics
+    if target in DANGER_TILES:
         return has_key, True, False, player_under_tile
 
     # Sortida
@@ -244,6 +242,8 @@ def main():
     game_state = "start"
 
     start_background = build_generator(current_algorithm).generate()
+    apply_base_terrain(start_background)
+    apply_water_patches(start_background)
 
     grid, level, has_key, game_over, player_under_tile, entity_under_tiles, enemies = reset_game(
         current_algorithm

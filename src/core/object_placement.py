@@ -1,5 +1,5 @@
 import random
-from config import GRASS, ROCK, DIRT, PLAYER, EXIT, KEY, ENEMY, WALKABLE_TERRAINS
+from config import DIRT, PLAYER, EXIT, KEY, ENEMY, WALKABLE_TERRAINS, WALKABLE_OBJECT_PLACEMENT
 
 
 def _get_positions_by_walkable(grid):
@@ -25,14 +25,14 @@ def _walkable_neighbors(grid, x, y):
     """
     Compta quants veïns transitables té una cel·la.
     """
-    walkable_tiles = set(WALKABLE_TERRAINS) | {PLAYER, EXIT, KEY}
     directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
     count = 0
     for dx, dy in directions:
         nx, ny = x + dx, y + dy
-        if _is_inside(grid, nx, ny) and grid[ny][nx] in walkable_tiles:
+        if _is_inside(grid, nx, ny) and grid[ny][nx] in WALKABLE_OBJECT_PLACEMENT:
             count += 1
+
     return count
 
 
